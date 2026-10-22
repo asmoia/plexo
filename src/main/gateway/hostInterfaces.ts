@@ -67,6 +67,17 @@ export function parseLinkSpeed(value: string | number | null | undefined): numbe
   return Math.round(Number(match[1]) * scale)
 }
 
+/**
+ * Why the PowerShell enumeration failed, if it did. Swallowing it silently is how a machine ends up
+ * with every adapter reporting interface index 0 — which looks like "the gateway captures nothing"
+ * and says nothing about the cause.
+ */
+let enumerationError: string | null = null
+
+export function hostEnumerationError(): string | null {
+  return enumerationError
+}
+
 async function windowsInterfaces(): Promise<Map<string, HostInterface> | null> {
   if (process.platform !== 'win32') return null
   try {
@@ -113,8 +124,13 @@ async function windowsInterfaces(): Promise<Map<string, HostInterface> | null> {
       })
     }
     return result
-  } catch {
-    // Restricted PowerShell must not stop the app; the caller falls back to Node's view.
+  } catch (error) {
+    // Restricted PowerShell must not stop the app; the caller falls back to Node's view. The reason
+    // is kept so the panel and the tests can say what happened.
+    const failed = error as { message?: string; stderr?: string }
+    enumerationError = `${failed.message ?? 'PowerShell failed'}${
+      failed.stderr ? `: ${String(failed.stderr).trim().split('\n').slice(0, 3).join(' ')}` : ''
+    }`
     return null
   }
 }
@@ -122,7 +138,10 @@ async function windowsInterfaces(): Promise<Map<string, HostInterface> | null> {
 /** Every adapter, by the app's interface id, with the platform details the gateway needs. */
 export async function listHostInterfaces(): Promise<Map<string, HostInterface>> {
   const discovered = await windowsInterfaces()
-  if (discovered && discovered.size > 0) return discovered
+  if (discovered && discovered.size > 0) {
+    enumerationError = null
+    return discovered
+  }
 
   const result = new Map<string, HostInterface>()
   for (const [device, addresses] of Object.entries(networkInterfaces())) {

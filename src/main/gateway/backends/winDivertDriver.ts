@@ -88,6 +88,18 @@ const WIN_ERRORS: Record<number, string> = {
   1275: 'the WinDivert driver was blocked by Windows — driver signature or memory integrity'
 }
 
+/**
+ * A handle the driver returned, as a number. koffi gives a `uintptr_t` back as a number, or as a
+ * BigInt on a platform where it prefers that; either way this is what the rest of the file uses.
+ */
+function handleValue(value: unknown): number {
+  if (typeof value === 'bigint') return Number(value)
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  // A `void *` declaration would give an opaque pointer object here; its address is still readable,
+  // and treating it as 0 would report a healthy handle as a failure.
+  return Number(String(value)) || 0
+}
+
 function describeWinError(code: number): string {
   const known = WIN_ERRORS[code]
   return known ? `${known} (error ${code})` : `Windows error ${code}`
@@ -100,9 +112,9 @@ export class KoffiWinDivertDriver implements WinDivertDriver {
     lastError: () => number
     recv: (...args: unknown[]) => unknown
     send: (...args: unknown[]) => unknown
-    close: (handle: unknown) => unknown
-    setParam: (handle: unknown, param: number, value: bigint) => unknown
-    shutdown: (handle: unknown, how: number) => unknown
+    close: (handle: number) => unknown
+    setParam: (handle: number, param: number, value: bigint) => unknown
+    shutdown: (handle: number, how: number) => unknown
   }
   private readonly packet = Buffer.alloc(PACKET_BUFFER_BYTES)
   private readonly receivedLength = Buffer.alloc(4)
@@ -114,6 +126,15 @@ export class KoffiWinDivertDriver implements WinDivertDriver {
     this.lib = lib
   }
 
+  /**
+   * The prototypes are declared with `uintptr_t` handles, not `void *`.
+   *
+   * koffi returns a `void *` as an opaque object, and that object throws on every conversion —
+   * `!handle`, `handle === 0`, `Number(handle)` — with "Cannot convert object to primitive value".
+   * That is exactly what the first version did, so `WinDivertOpen` succeeded and the code immediately
+   * threw on the result, and every Windows start failed with that sentence. `uintptr_t` is the same
+   * ABI (a pointer-sized integer) and arrives as a number, which is comparable and printable.
+   */
   static async create(dllPath: string): Promise<KoffiWinDivertDriver> {
     const { default: koffi } = await import('koffi')
     const lib = koffi.load(dllPath)
@@ -124,28 +145,28 @@ export class KoffiWinDivertDriver implements WinDivertDriver {
     return new KoffiWinDivertDriver({
       lastError: () => Number(getLastError()) || 0,
       open: lib.func(
-        'void *WinDivertOpen(const char *filter, int layer, int16_t priority, uint64_t flags)'
+        'uintptr_t WinDivertOpen(const char *filter, int layer, int16_t priority, uint64_t flags)'
       ),
       recv: lib.func(
-        'bool WinDivertRecv(void *handle, void *packet, uint32_t packetLen, uint32_t *recvLen, void *addr)'
+        'bool WinDivertRecv(uintptr_t handle, void *packet, uint32_t packetLen, uint32_t *recvLen, void *addr)'
       ),
       send: lib.func(
-        'bool WinDivertSend(void *handle, void *packet, uint32_t packetLen, uint32_t *sendLen, const void *addr)'
+        'bool WinDivertSend(uintptr_t handle, const void *packet, uint32_t packetLen, uint32_t *sendLen, const void *addr)'
       ),
-      close: lib.func('bool WinDivertClose(void *handle)'),
-      setParam: lib.func('bool WinDivertSetParam(void *handle, int param, uint64_t value)'),
-      shutdown: lib.func('bool WinDivertShutdown(void *handle, int how)')
+      close: lib.func('bool WinDivertClose(uintptr_t handle)'),
+      setParam: lib.func('bool WinDivertSetParam(uintptr_t handle, int param, uint64_t value)'),
+      shutdown: lib.func('bool WinDivertShutdown(uintptr_t handle, int how)')
     })
   }
 
   open(filter: string, flags: number, priority = 0): number {
-    const handle = this.lib.open(filter, WINDIVERT_LAYER.NETWORK, priority, flags)
-    if (!handle || handle === 0n || handle === 0) {
+    const handle = handleValue(this.lib.open(filter, WINDIVERT_LAYER.NETWORK, priority, flags))
+    if (handle === 0) {
       const code = this.lib.lastError()
       this.error = `WinDivertOpen failed: ${describeWinError(code)}`
       throw new Error(this.error)
     }
-    return Number(handle)
+    return handle
   }
 
   recv(handle: number): RecvResult {

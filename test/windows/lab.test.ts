@@ -26,7 +26,11 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { GatewayService } from '../../src/main/gateway/service'
 import { WinDivertBackend } from '../../src/main/gateway/backends/winDivert'
-import { listHostInterfaces, type HostInterface } from '../../src/main/gateway/hostInterfaces'
+import {
+  hostEnumerationError,
+  listHostInterfaces,
+  type HostInterface
+} from '../../src/main/gateway/hostInterfaces'
 import { detectCapability, isAdministrator } from '../../src/main/gateway/windowsHost'
 import { DEFAULT_GATEWAY_CONFIG, type GatewayConfig } from '../../src/shared/gateway'
 import { internetChecksum, parseIcmp, parseIpv4, IPPROTO } from '../../src/main/gateway/packet'
@@ -74,6 +78,7 @@ async function canUseDriver(): Promise<{ ok: boolean; detail: string }> {
     publicPorts: { min: 20_000, max: 29_999 }
   })
   log(`driver self-test: ${result.ok ? 'ok' : 'failed'} — ${result.detail}`)
+  if (!result.ok) log(`dll: ${DLL_PATH}`)
   driverReady = result
   return driverReady
 }
@@ -247,6 +252,7 @@ test('the PC’s own adapters are enumerated from PowerShell, with indexes and a
       .map((host) => `${host.id}#${host.ifIdx}(${host.addresses.join(',') || 'no address'})`)
       .join(' | ')}`
   )
+  if (hostEnumerationError()) log(`PowerShell enumeration failed: ${hostEnumerationError()}`)
   assert.ok(hosts.size > 0, 'a runner always has at least one adapter')
   const usable = [...hosts.values()].filter((host) => host.ifIdx > 0 && host.addresses.length > 0)
   assert.ok(usable.length > 0, 'at least one adapter must have an interface index and an address')
