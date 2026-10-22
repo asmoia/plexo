@@ -41,6 +41,11 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
+      # The gateway's engine, its packet rewriting and its simulated-network tests: no Electron, no
+      # driver, no Windows needed, so they run here on every push.
+      - name: Gateway unit tests
+        run: npm run test:gateway
+
   e2e:
     name: E2E (smoke)
     runs-on: ubuntu-latest

@@ -1,3 +1,4 @@
+import type { GatewayAction, GatewayConfig, GatewaySnapshot } from './gateway'
 import type {
   AppSettings,
   DownloadUpdate,
@@ -66,4 +67,15 @@ export interface IpcContract {
   resumeFromLink: { args: [linkId: string, downloadId: string]; result: void }
   /** Forgets the sign-in of a link that won't be started. */
   dismissLink: { args: [id: string]; result: void }
+  /** The console gateway's current state, including every uplink's measurements. */
+  gatewaySnapshot: { args: []; result: GatewaySnapshot }
+  /** The saved gateway settings, as the panel last left them. */
+  gatewayConfig: { args: []; result: GatewayConfig }
+  /** Saves gateway settings and applies them (starting or stopping the gateway to match). */
+  gatewayConfigure: { args: [config: GatewayConfig]; result: GatewaySnapshot }
+  /** Start, stop, restart, or run the driver self-test. */
+  gatewayAction: {
+    args: [action: GatewayAction]
+    result: { snapshot: GatewaySnapshot; detail?: string }
+  }
 }

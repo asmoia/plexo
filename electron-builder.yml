@@ -21,7 +21,11 @@ files:
   - '!node_modules/webrtc-polyfill/**'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
+  # The WinDivert driver files are loaded from disk, and the driver loads its .sys from the folder
+  # it sits in; neither works from inside app.asar.
   - resources/**
+  # The capture process is spawned, and a file inside app.asar cannot be executed.
+  - out/main/**
 win:
   # No protocols or fileAssociations: the NSIS installer would register Plexo as *the* handler for
   # magnet links and .torrent files, taking them from a torrent client the user already has.

@@ -54,6 +54,14 @@ https://github.com/user-attachments/assets/e57728f4-fb63-441f-839c-174eef954b17
 - Race slow chunks on idle connections to avoid a slow finish
 - View live speeds, time remaining and per-network progress
 
+### Console gateway
+
+- Share the PC's connections with a console (or anything else) plugged into an Ethernet port
+- Every connection the device opens is balanced across the networks, faster ones taking more
+- Automatic failover: a Wi-Fi drop moves the device to the other connection in seconds
+- DHCP and DNS for the device, so nothing has to be configured by hand
+- Windows only, needs Administrator and the bundled WinDivert driver: see [docs/GATEWAY.md](docs/GATEWAY.md)
+
 ### Browser integration
 
 - Capture downloads or send individual links to Plexo
@@ -118,6 +126,8 @@ Plexo can use any connection your operating system shows as a network adapter.
 If Windows turns Wi-Fi off when Ethernet is plugged in, open the Group Policy Editor (`gpedit.msc`), go to _Computer Configuration_ › _Administrative Templates_ › _Network_ › _Windows Connection Manager_, and set **Minimize the number of simultaneous connections to the Internet or a Windows domain** to **Disabled**.
 
 If both stay connected but one sits idle in Plexo, Windows may be sending its traffic out the other network. Add your setup to [#65](https://github.com/anmolkapil/plexo/issues/65).
+
+The **console gateway** (Windows, see [docs/GATEWAY.md](docs/GATEWAY.md)) does the opposite job: it takes traffic from another device on an Ethernet port and spreads _that_ over your networks, so a console benefits from both connections even though Windows itself routes only one.
 
 </details>
 

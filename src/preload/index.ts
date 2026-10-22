@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import { IpcChannels } from '../shared/ipc-channels'
 import type { IpcContract } from '../shared/ipc-contract'
+import type { GatewayAction, GatewayConfig, GatewaySnapshot } from '../shared/gateway'
 import type {
   AppSettings,
   DownloadUpdate,
@@ -63,11 +64,24 @@ const plexoApi = {
     invoke('resumeFromLink', linkId, downloadId),
   dismissLink: (id: string) => invoke('dismissLink', id),
 
+  gatewaySnapshot: () => invoke('gatewaySnapshot'),
+  gatewayConfig: () => invoke('gatewayConfig'),
+  gatewayConfigure: (config: GatewayConfig) => invoke('gatewayConfigure', config),
+  gatewayAction: (action: GatewayAction) => invoke('gatewayAction', action),
+
   /** pendingLinks() has the new link. */
   onLinkReceived: (callback: () => void): (() => void) => {
     const listener = (): void => callback()
     ipcRenderer.on(IpcChannels.linkReceived, listener)
     return () => ipcRenderer.removeListener(IpcChannels.linkReceived, listener)
+  },
+
+  /** A gateway update the main process pushed (once a second while it runs, and on every change). */
+  onGatewayChanged: (callback: (snapshot: GatewaySnapshot) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, snapshot: GatewaySnapshot): void =>
+      callback(snapshot)
+    ipcRenderer.on(IpcChannels.gatewayChanged, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.gatewayChanged, listener)
   },
 
   onDownloadUpdated: (callback: (update: DownloadUpdate) => void): (() => void) => {

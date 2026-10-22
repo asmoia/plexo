@@ -1,0 +1,88 @@
+name: Windows lab
+
+# The console gateway's Windows half cannot be tested anywhere but Windows: the WinDivert driver,
+# the `WINDIVERT_ADDRESS` codec against the driver that actually writes it, the capture process
+# spawning, and the PowerShell adapter enumeration. This runs those on real Windows machines, so that
+# a bug is found here rather than on the gaming PC the feature was written for.
+#
+# The lab never changes the machine it runs on and never drops its traffic: every capture handle is a
+# sniffer or matches an interface that does not exist, and the service runs with `manageHost: false`.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, gateway]
+    paths:
+      - 'src/main/gateway/**'
+      - 'test/**'
+      - 'scripts/run-gateway-lab.mjs'
+      - 'resources/windivert/**'
+      - '.github/workflows/windows-lab.yml'
+
+concurrency:
+  group: windows-lab-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lab:
+    name: Lab (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Server 2022 and 2019: two Windows kernels, two WFP/driver-signing configurations.
+        os: [windows-2022, windows-2019]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # --ignore-scripts for the same reason as the other workflow: Electron's binary download and
+      # electron-builder's rebuild are needed to *run* the app, not to test the engine.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # What the machine actually is: a failed driver test is much easier to read next to this.
+      - name: Machine report
+        shell: pwsh
+        run: |
+          Write-Host "== whoami =="; whoami
+          Write-Host "== integrity level =="
+          whoami /groups | Select-String -Pattern 'Mandatory Label'
+          Write-Host "== adapters =="
+          Get-NetAdapter | Select-Object Name, InterfaceIndex, InterfaceDescription, Status, LinkSpeed |
+            Format-Table -AutoSize | Out-String | Write-Host
+          Write-Host "== addresses =="
+          Get-NetIPAddress -AddressFamily IPv4 | Select-Object InterfaceIndex, InterfaceAlias, IPAddress |
+            Format-Table -AutoSize | Out-String | Write-Host
+          Write-Host "== driver files =="
+          Get-ChildItem resources/windivert | Select-Object Name, Length | Format-Table -AutoSize |
+            Out-String | Write-Host
+          Write-Host "== memory integrity (blocks unsigned drivers) =="
+          $hvci = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' -ErrorAction SilentlyContinue
+          if ($hvci) { $hvci.Enabled } else { 'not configured' }
+
+      # The platform-free half first: if the engine is broken, the driver tests are noise.
+      - name: Unit and simulation tests
+        run: npm run test:gateway
+
+      - name: Windows lab (driver, capture process, service)
+        run: node scripts/run-gateway-lab.mjs
+
+      - name: The capture process is bundled for the app, not just for the lab
+        run: |
+          npx electron-vite build
+          node scripts/check-bundled-worker.mjs
+
+      - name: Upload logs and artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab-${{ matrix.os }}
+          path: |
+            .tmp/windows-lab/
+            gateway.log
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,3 +1,5 @@
+import type { GatewayConfig } from './gateway'
+
 export type NetworkInterfaceKind = 'wifi' | 'usb' | 'ethernet' | 'bridge' | 'other'
 export type IpFamily = 4 | 6
 
@@ -360,6 +362,8 @@ export interface AppSettings {
   /** How speeds are shown everywhere; sizes stay in bytes either way. */
   speedUnit?: SpeedUnit
   browserExtensionUsed?: boolean
+  /** The console gateway's settings (see shared/gateway.ts). */
+  gateway?: GatewayConfig
 }
 
 /** bytes: MB/s. bits: Mbps, as internet plans and speed tests count them. */

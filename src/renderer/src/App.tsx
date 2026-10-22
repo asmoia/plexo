@@ -1,5 +1,7 @@
 import type { DownloadState, FinishedDownload } from '@shared/types'
+import { useState } from 'react'
 import { DownloadActionsProvider } from './components/DownloadActionsProvider'
+import { GatewayPanel } from './components/GatewayPanel'
 import { NetworkBindingDialog } from './components/NetworkBindingDialog'
 import { NewDownloadDialog } from './components/NewDownloadDialog'
 import { StatusBar } from './components/StatusBar'
@@ -53,6 +55,7 @@ function CurrentScreen(): React.JSX.Element {
 }
 
 function App(): React.JSX.Element {
+  const [gatewayOpen, setGatewayOpen] = useState(false)
   useDownloadEvents()
   useOpenedLinks()
   useNewDownloadShortcuts()
@@ -66,9 +69,10 @@ function App(): React.JSX.Element {
           <div className="min-h-0 flex-1">
             <CurrentScreen />
           </div>
-          <StatusBar />
+          <StatusBar onOpenGateway={() => setGatewayOpen(true)} />
           <NewDownloadDialog />
           <NetworkBindingDialog />
+          <GatewayPanel open={gatewayOpen} onOpenChange={setGatewayOpen} />
         </div>
       </DownloadActionsProvider>
     </TooltipProvider>

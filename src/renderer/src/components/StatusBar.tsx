@@ -5,6 +5,7 @@ import { formatBytes } from '../utils/format'
 import { useFormatSpeedLimit } from '../hooks/useFormatSpeed'
 import { useDownloadSchedule } from '../hooks/useDownloadSchedule'
 import { ScreenFooter } from './ScreenFooter'
+import { Gamepad2 } from 'lucide-react'
 import { ThemeToggle } from './ThemeToggle'
 import { Switch } from './ui/switch'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
@@ -52,7 +53,7 @@ function SpeedUnitToggle(): React.JSX.Element {
 /** Along the bottom of every screen: the room left where downloads are saved, the queue, the
  * slow mode switch, and view preferences. Speeds and their limits are left to the screens that
  * show them — repeated down here they only doubled up, or read as a limit with no cause. */
-export function StatusBar(): React.JSX.Element {
+export function StatusBar({ onOpenGateway }: { onOpenGateway: () => void }): React.JSX.Element {
   const formatSpeedLimit = useFormatSpeedLimit()
   const { message } = useDownloadSchedule()
   // A count, not the downloads: progress ticks don't re-render the footer.
@@ -94,6 +95,23 @@ export function StatusBar(): React.JSX.Element {
       {message && <span className="truncate">{message}</span>}
       {/* Controls, most-flipped first: the edge holds the set-once view preferences. */}
       <div className="flex shrink-0 items-center gap-3">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={onOpenGateway}
+                className="flex items-center gap-1.5 rounded-[6px] px-1.5 py-0.5 text-[var(--text-secondary)] hover:bg-background [-webkit-app-region:no-drag]"
+              />
+            }
+          >
+            <Gamepad2 className="size-3.5" />
+            Console
+          </TooltipTrigger>
+          <TooltipContent>
+            Share one internet connection between your PC and a console
+          </TooltipContent>
+        </Tooltip>
         <UpdateIndicator />
         <Tooltip>
           <TooltipTrigger

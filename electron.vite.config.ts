@@ -9,6 +9,16 @@ export default defineConfig({
       alias: {
         '@shared': resolve('src/shared')
       }
+    },
+    build: {
+      rollupOptions: {
+        // The capture loop calls into WinDivert, which blocks; it therefore runs in its own process
+        // (see gateway/backends/winDivert.ts) and needs its own bundle next to the app's.
+        input: {
+          index: resolve('src/main/index.ts'),
+          winDivertWorker: resolve('src/main/gateway/backends/winDivertWorker.ts')
+        }
+      }
     }
   },
   preload: {

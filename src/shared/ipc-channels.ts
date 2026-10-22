@@ -35,5 +35,10 @@ export const IpcChannels = {
   dismissLink: 'app:dismiss-link',
   updateState: 'update:state',
   updateStateChanged: 'update:state-changed',
-  showUpdateMenu: 'update:show-menu'
+  showUpdateMenu: 'update:show-menu',
+  gatewaySnapshot: 'gateway:snapshot',
+  gatewayConfig: 'gateway:config',
+  gatewayConfigure: 'gateway:configure',
+  gatewayAction: 'gateway:action',
+  gatewayChanged: 'gateway:changed'
 } as const

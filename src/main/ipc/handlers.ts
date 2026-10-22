@@ -1,5 +1,7 @@
 import { stat, statfs } from 'node:fs/promises'
+import { join } from 'node:path'
 import {
+  app,
   clipboard,
   dialog,
   ipcMain,
@@ -27,6 +29,9 @@ import { pendingLink, pendingLinks, releaseLink } from '../openLinks'
 import { NetworkMonitor } from '../network/interfaces'
 import { loadSettings, saveSettings } from '../settings'
 import { showUpdateMenu, updateState } from '../updater'
+import { GatewayService } from '../gateway/service'
+import { relaunchElevated } from '../gateway/windowsHost'
+import { DEFAULT_GATEWAY_CONFIG } from '../../shared/gateway'
 
 async function openNetworkSettings(): Promise<void> {
   if (process.platform === 'win32') {
@@ -78,6 +83,25 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): Down
     if (window && !window.isDestroyed()) window.webContents.send(IpcChannels.networksChanged, list)
   })
   const manager = new DownloadManager(getWindow, networks)
+
+  // The console gateway: its packets never touch Plexo's download engine, but its settings live in
+  // the same file and its state is pushed to the window the same way.
+  const gateway = new GatewayService({
+    resourcesPath: process.resourcesPath,
+    // Kept beside the app's settings: one file per session's worth of gateway events, which is what
+    // to send when the gateway fails on a machine that cannot be inspected.
+    logPath: join(app.getPath('userData'), 'gateway.log')
+  })
+  gateway.onChange((snapshot) => {
+    const window = getWindow()
+    if (window && !window.isDestroyed())
+      window.webContents.send(IpcChannels.gatewayChanged, snapshot)
+  })
+  // Saved settings are applied once the rest of the app is up; a failure must not stop the window
+  // from opening, so it is logged and the gateway simply stays stopped.
+  void loadSettings()
+    .then((settings) => gateway.configure(settings.gateway ?? DEFAULT_GATEWAY_CONFIG))
+    .catch((error) => console.error('[plexo] gateway failed to start', error))
   // Waking from sleep, the networks may have changed without a poll in between to see it.
   powerMonitor.on('resume', () => {
     manager.systemResumed()
@@ -105,6 +129,8 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): Down
     await saveSettings(patch)
     // Read back rather than taken from the patch: what was saved is what passed the checks.
     await manager.applySettings(await loadSettings())
+    if (patch?.gateway)
+      await gateway.configure((await loadSettings()).gateway ?? DEFAULT_GATEWAY_CONFIG)
   })
 
   // Answered via sendSync from the preload, which blocks the page until returnValue is set — so a
@@ -249,6 +275,44 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): Down
   handle('removeDownload', async (_event, id, options) =>
     manager.remove(id, options?.trashFile === true)
   )
+
+  handle('gatewaySnapshot', async () => gateway.snapshot())
+  handle('gatewayConfig', async () => gateway.currentConfig)
+  handle('gatewayConfigure', async (_event, config) => {
+    // Saved before it is applied, so a crash between the two restarts in the state the user chose.
+    await saveSettings({ gateway: config })
+    return gateway.configure(config)
+  })
+  handle('gatewayAction', async (_event, action) => {
+    if (action === 'start' || action === 'stop' || action === 'restart') {
+      const current = gateway.currentConfig
+      const config = { ...current, enabled: action !== 'stop' }
+      await saveSettings({ gateway: config })
+      if (action === 'start') await gateway.configure(config)
+      else if (action === 'stop') await gateway.configure(config)
+      else await gateway.restart()
+      return { snapshot: gateway.snapshot() }
+    }
+    if (action === 'elevate') {
+      if (process.platform !== 'win32')
+        return { snapshot: gateway.snapshot(), detail: 'This needs Windows.' }
+      // The snapshot says whether this is worth doing; don't launch a second copy for nothing.
+      const capability = gateway.snapshot().capability
+      if (capability.admin)
+        return { snapshot: gateway.snapshot(), detail: 'Plexo is already elevated.' }
+      await relaunchElevated(process.execPath)
+      setImmediate(() => app.quit())
+      return { snapshot: gateway.snapshot(), detail: 'Restarting as Administrator…' }
+    }
+    if (action === 'selfTest') {
+      const result = await gateway.selfTest()
+      return { snapshot: gateway.snapshot(), detail: result.detail }
+    }
+    return {
+      snapshot: gateway.snapshot(),
+      detail: 'Installing the driver is done by the Plexo installer.'
+    }
+  })
 
   handle('updateState', () => updateState())
   handle('showUpdateMenu', () => showUpdateMenu())
