@@ -85,7 +85,13 @@ async function windowsInterfaces(): Promise<Map<string, HostInterface> | null> {
   if (process.platform !== 'win32') return null
   try {
     const script = [
-      '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;',
+      // Setting the console encoding throws when stdout is a pipe ("the handle is invalid") on some
+      // Windows hosts, and an exception here would fail the whole call — which then silently falls
+      // back to an enumeration with no interface indexes. It is a nicety for non-Latin adapter
+      // names, so a failure to set it must not matter.
+      'try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { };',
+      "$ProgressPreference = 'SilentlyContinue';",
+      "$ErrorActionPreference = 'Stop';",
       'Get-NetAdapter -ErrorAction Stop | ForEach-Object {',
       '  $a = $_;',
       '  $ip = Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue;',
@@ -129,11 +135,24 @@ async function windowsInterfaces(): Promise<Map<string, HostInterface> | null> {
     return result
   } catch (error) {
     // Restricted PowerShell must not stop the app; the caller falls back to Node's view. The reason
-    // is kept so the panel and the tests can say what happened.
-    const failed = error as { message?: string; stderr?: string }
-    enumerationError = `${failed.message ?? 'PowerShell failed'}${
-      failed.stderr ? `: ${String(failed.stderr).trim().split('\n').slice(0, 3).join(' ')}` : ''
-    }`
+    // is kept so the panel and the tests can say what happened — including the exit code and
+    // whatever PowerShell wrote, which is usually the whole explanation.
+    const failed = error as {
+      message?: string
+      stderr?: string
+      stdout?: string
+      code?: number | string
+      signal?: string
+      killed?: boolean
+    }
+    const detail = [
+      `exit ${failed.code ?? '?'}${failed.killed ? ' (killed)' : ''}${failed.signal ? ` signal ${failed.signal}` : ''}`,
+      String(failed.stderr ?? '').trim(),
+      String(failed.stdout ?? '').trim()
+    ]
+      .filter((part) => part.length > 0)
+      .join(' · ')
+    enumerationError = `${(failed.message ?? 'PowerShell failed').split('\n')[0]} [${detail.slice(0, 600)}]`
     return null
   }
 }
