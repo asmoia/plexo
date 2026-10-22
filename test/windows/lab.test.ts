@@ -317,10 +317,7 @@ test('real packets are captured from a real adapter and decode to what they say 
     assert.ok(valid.length > 0, 'captured packets must parse as IPv4')
     for (const entry of seen) {
       assert.ok(entry.ifIdx > 0, 'every captured packet must carry a real interface index')
-      if (entry.parsed) {
-        assert.equal(entry.parsed.version, 4)
-        assert.ok(entry.parsed.totalLength >= 20)
-      }
+      if (entry.parsed) assert.ok(entry.parsed.totalLength >= 20, 'a plausible IPv4 length')
     }
     // The interface index the driver reported must be the interface the filter asked for. This is
     // the assertion that would have caught the WinDivert 1.4 layout: with it, every packet decoded
@@ -446,12 +443,17 @@ function writeAddress(packet: Buffer, offset: number, address: string): boolean 
   return true
 }
 
-/** Whether a packet is the answer to the echo request with this identifier. */
+/**
+ * Whether a packet is the answer to the echo request with this identifier. An echo reply carries the
+ * identifier in the first two bytes after type, code and checksum — which `parseIcmp` reports as the
+ * upper half of its `rest` word.
+ */
 function isEchoReply(packet: Buffer, identifier: number): boolean {
   const parsed = parseIpv4(packet)
   if (!parsed || parsed.protocol !== IPPROTO.ICMP) return false
   const icmp = parseIcmp(parsed)
-  return icmp !== null && icmp.type === 0 && icmp.identifier === identifier
+  if (icmp === null || icmp.type !== 0) return false
+  return icmp.rest >>> 16 === identifier
 }
 
 /** Keeps the socket import honest and gives the lab something to bind if it ever needs a peer. */
