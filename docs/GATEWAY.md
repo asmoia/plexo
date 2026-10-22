@@ -341,6 +341,12 @@ The engine is almost entirely platform-free and lives in `src/main/gateway/`:
 | `backends/`                            | Packet capture: `capture.ts` is the seam; `winDivert*` is the Windows implementation, split into a driver wrapper, a loop, an IPC protocol and the child-process entry. |
 | `windowsHost.ts` / `hostInterfaces.ts` | Everything that touches the machine: adapters, addresses, firewall, admin.                                                                                              |
 
+`test/windows/` is the part that needs Windows: run with `npm run test:windows` on an elevated
+Windows machine, or let `.github/workflows/windows-lab.yml` run it on GitHub's Windows runners. It
+exercises the real driver, the real capture process and the whole service, and it never takes the
+machine's own traffic off the stack (every handle is a sniffer or matches an interface that does not
+exist), so a red run is safe to read rather than a machine to fix.
+
 Tests are in `test/gateway/`, run with `npm run test:gateway` (Node's test runner; no browser, no
 driver, no Windows). `test/gateway/simulation.test.ts` is the interesting one: it drives the real
 scheduler, health and forwarder with a simulated world — asymmetric capacities, jitter, loss, an

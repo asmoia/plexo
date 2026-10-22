@@ -6,12 +6,28 @@
  * one thing the WinDivert API offers that the Windows routing table does not (Windows would send it
  * out the default route and ignore the interface we picked).
  *
- * The struct is a C bitfield, so it is handled as a fixed 64-byte buffer with the offsets written
- * out rather than as a koffi struct: koffi's bitfield support depends on the platform's C ABI, and a
- * silent mismatch here would send packets out of the wrong adapter. The offsets below are from
- * WinDivert 1.4's `windivert.h` (INT64 timestamp, then a UINT32 of flags, then IfIdx and SubIfIdx),
- * and `windivertAddress.test.ts` pins every field of the codec. What it cannot pin is the driver's
- * own behaviour — that is what the on-hardware checklist in docs/GATEWAY.md is for.
+ * The struct is a C bitfield, so it is handled as a fixed-size buffer with the offsets written out
+ * rather than as a koffi struct: koffi's bitfield support depends on the platform's C ABI, and a
+ * silent mismatch here sends packets out of the wrong adapter — or nowhere.
+ *
+ * The layout below is **WinDivert 2.2.2's**, byte for byte, which is the version this app ships:
+ *
+ *   INT64  Timestamp;                     offset 0,  8 bytes
+ *   UINT32 Layer:8, Event:8, Sniffed:1, Outbound:1, Loopback:1, Impostor:1, IPv6:1,
+ *          IPChecksum:1, TCPChecksum:1, UDPChecksum:1, Reserved1:8;   offset 8,  4 bytes
+ *   UINT32 Reserved2;                     offset 12, 4 bytes
+ *   union { WINDIVERT_DATA_NETWORK { UINT32 IfIdx; UINT32 SubIfIdx; }; …; UINT8 Reserved3[64]; };
+ *                                         offset 16, 64 bytes
+ *
+ *   sizeof(WINDIVERT_ADDRESS) == 80
+ *
+ * Getting this wrong is not a small thing, and it was wrong once: an earlier version used WinDivert
+ * **1.4's** layout (64 bytes, IfIdx at offset 12, no Reserved2), so every captured packet decoded
+ * with interface index 0 — and an interface index is the whole mechanism by which the gateway chooses
+ * an uplink. A 64-byte buffer was also 16 bytes too small for the driver to write into.
+ *
+ * `windivertAddress.test.ts` pins every field of the codec, and the Windows lab checks the codec
+ * against the driver that actually fills it in.
  */
 
 /** `WINDIVERT_LAYER` values. */
@@ -29,7 +45,8 @@ export const WINDIVERT_EVENT_NETWORK_PACKET = 0
 /** `WINDIVERT_PARAM` values used to size the queue. */
 export const WINDIVERT_PARAM = { QUEUE_LEN: 0, QUEUE_TIME: 1, QUEUE_SIZE: 2 } as const
 
-export const WINDIVERT_ADDRESS_SIZE = 64
+/** `sizeof(WINDIVERT_ADDRESS)` in WinDivert 2.2.2. The driver writes all 80 bytes. */
+export const WINDIVERT_ADDRESS_SIZE = 80
 
 /** The flags byte triple at offset 8. */
 export interface AddressFlags {
@@ -52,10 +69,10 @@ export interface WinDivertAddress extends AddressFlags {
 }
 
 const FLAG_BYTE = 8
-const IFIDX = 12
-const SUBIFIDX = 16
-/** The union WinDivert lets callers read the interface from; some versions only fill this copy. */
-const UNION_IFIDX = 24
+/** The union starts here in 2.2.2: `Reserved2` sits between the flags and the network data. */
+const UNION_START = 16
+const IFIDX = UNION_START
+const SUBIFIDX = UNION_START + 4
 
 /**
  * Reads an address out of the 64 bytes the driver filled. Anything past the fields we use is left
@@ -75,7 +92,7 @@ export function decodeAddress(buffer: Buffer): WinDivertAddress {
     ipChecksum: ((flags >>> 21) & 1) === 1,
     tcpChecksum: ((flags >>> 22) & 1) === 1,
     udpChecksum: ((flags >>> 23) & 1) === 1,
-    ifIdx: buffer.readUInt32LE(IFIDX) || buffer.readUInt32LE(UNION_IFIDX),
+    ifIdx: buffer.readUInt32LE(IFIDX),
     subIfIdx: buffer.readUInt32LE(SUBIFIDX)
   }
 }
@@ -106,11 +123,10 @@ export function encodeAddress(options: EncodeAddressOptions): Buffer {
   if (options.ipv6) flags |= 1 << 20
   if (options.checksumsValid) flags |= (1 << 21) | (1 << 22) | (1 << 23)
   buffer.writeUInt32LE(flags >>> 0, FLAG_BYTE)
+  // Offset 12 is Reserved2 and must stay zero; IfIdx and SubIfIdx live in the union at 16 and 20.
+  buffer.writeUInt32LE(0, 12)
   buffer.writeUInt32LE(options.ifIdx, IFIDX)
   buffer.writeUInt32LE(0, SUBIFIDX)
-  // Some driver versions read the interface from the trailing union instead; writing both costs
-  // nothing and makes the send work whichever copy the version in use honours.
-  buffer.writeUInt32LE(options.ifIdx, UNION_IFIDX)
   return buffer
 }
 

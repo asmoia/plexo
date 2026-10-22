@@ -26,10 +26,28 @@ test('a send address puts the interface index where WinDivert reads it', () => {
   assert.equal(decoded.ipv6, false)
   assert.equal(decoded.layer, WINDIVERT_LAYER.NETWORK)
   assert.equal(decoded.event, WINDIVERT_EVENT_NETWORK_PACKET)
-  // The union copy some driver versions honour, at offset 24.
-  assert.equal(encoded.readUInt32LE(24), 12)
-  // And nothing is written past the struct.
-  assert.equal(encoded.readUInt32LE(20), 0)
+})
+
+test('the address layout is WinDivert 2.2.2’s, which is the version this app ships', () => {
+  // Pinned field by field, because the layout changed between WinDivert 1.4 and 2.x and getting it
+  // wrong is invisible: the earlier 1.4 layout made every captured packet decode with interface
+  // index 0, and a 64-byte buffer was 16 bytes too small for the driver to write into.
+  assert.equal(WINDIVERT_ADDRESS_SIZE, 80, 'sizeof(WINDIVERT_ADDRESS) in 2.2.2')
+  const encoded = encodeAddress({ ifIdx: 14 })
+  assert.equal(encoded.length, 80)
+  assert.equal(encoded.readUInt32LE(8) & 0xff, WINDIVERT_LAYER.NETWORK, 'Layer at offset 8')
+  assert.equal(encoded.readUInt32LE(12), 0, 'Reserved2 at offset 12 stays zero')
+  assert.equal(encoded.readUInt32LE(16), 14, 'IfIdx at offset 16, inside the union')
+  assert.equal(encoded.readUInt32LE(20), 0, 'SubIfIdx at offset 20')
+  // A network-layer address as the driver would fill it: timestamp, flags, reserved, then the union.
+  const filled = Buffer.alloc(80)
+  filled.writeBigInt64LE(1_700_000_000_000_000n, 0)
+  filled.writeUInt32LE(0 | (1 << 17), 8)
+  filled.writeUInt32LE(0, 12)
+  filled.writeUInt32LE(7, 16)
+  filled.writeUInt32LE(0, 20)
+  assert.equal(decodeAddress(filled).ifIdx, 7)
+  assert.equal(decodeAddress(filled).outbound, true)
 })
 
 test('flags come back out of an address as they went in', () => {
@@ -48,7 +66,8 @@ test('an address filled by a driver parses, including its timestamp and layer', 
   buffer.writeBigInt64LE(1_700_000_000_123n, 0)
   // layer 0, event 0, sniffed, outbound and ipv6 set
   buffer.writeUInt32LE(0 | (1 << 16) | (1 << 17) | (1 << 20), 8)
-  buffer.writeUInt32LE(9, 12)
+  buffer.writeUInt32LE(0, 12)
+  buffer.writeUInt32LE(9, 16)
   const decoded = decodeAddress(buffer)
   assert.equal(decoded.timestamp, 1_700_000_000_123n)
   assert.equal(decoded.sniffed, true)

@@ -15,7 +15,10 @@ import { networkInterfaces } from 'node:os'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
-const TIMEOUT_MS = 6000
+// Windows PowerShell can take many seconds to start on a loaded machine (the first launch after a
+// boot especially). Six was too short: the call timed out, the code fell back to Node's adapter list,
+// and every interface index came back 0 — which the gateway reads as "no usable uplink".
+const TIMEOUT_MS = 30_000
 
 export interface HostInterface {
   /** The OS device name / adapter alias, which is the app's interface id everywhere else. */

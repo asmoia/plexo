@@ -282,6 +282,7 @@ test('real packets are captured from a real adapter and decode to what they say 
   }
 
   const seen: { ifIdx: number; parsed: ReturnType<typeof parseIpv4> }[] = []
+  const inboundIfIdx: number[] = []
   const backend = new WinDivertBackend({ dllPath: DLL_PATH, workerPath: WORKER_PATH })
   await backend.start(
     {
@@ -294,7 +295,10 @@ test('real packets are captured from a real adapter and decode to what they say 
     },
     {
       outbound: (packet) => seen.push({ ifIdx: host.ifIdx, parsed: parseIpv4(packet) }),
-      inbound: (packet, ifIdx) => seen.push({ ifIdx, parsed: parseIpv4(packet) })
+      inbound: (packet, ifIdx) => {
+        seen.push({ ifIdx, parsed: parseIpv4(packet) })
+        inboundIfIdx.push(ifIdx)
+      }
     }
   )
   try {
@@ -317,6 +321,13 @@ test('real packets are captured from a real adapter and decode to what they say 
         assert.equal(entry.parsed.version, 4)
         assert.ok(entry.parsed.totalLength >= 20)
       }
+    }
+    // The interface index the driver reported must be the interface the filter asked for. This is
+    // the assertion that would have caught the WinDivert 1.4 layout: with it, every packet decoded
+    // with index 0, so the gateway could never tell the console's traffic from an uplink's.
+    log(`decoded interface indexes: ${[...new Set(inboundIfIdx)].join(', ') || 'none'}`)
+    for (const ifIdx of inboundIfIdx) {
+      assert.equal(ifIdx, host.ifIdx, 'the driver’s own interface index must decode correctly')
     }
     // At least one TCP packet, since that is what HTTPS is.
     assert.ok(
