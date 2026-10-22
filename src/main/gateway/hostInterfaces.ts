@@ -94,15 +94,29 @@ async function windowsInterfaces(): Promise<Map<string, HostInterface> | null> {
       "$ErrorActionPreference = 'Stop';",
       'Get-NetAdapter -ErrorAction Stop | ForEach-Object {',
       '  $a = $_;',
-      '  $ip = Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue;',
-      '  $cfg = Get-NetIPConfiguration -InterfaceIndex $a.ifIndex -ErrorAction SilentlyContinue;',
-      '  [pscustomobject]@{',
+      // Adapter-down entries have no IP interface at all, and Get-NetIPConfiguration throws
+      // ("No MSFT_NetIPInterface objects found with property 'InterfaceIndex' equal to 'N'") for
+      // them — on real hardware that aborted the whole enumeration and left every adapter at
+      // index 0. One unusable adapter must cost only its own address fields, never the list.
+      '  $row = [pscustomobject]@{',
       '    Name = $a.Name; MacAddress = $a.MacAddress; ifIndex = [int]$a.ifIndex; InterfaceDescription = $a.InterfaceDescription;',
       '    Status = [string]$a.Status; LinkSpeed = [string]$a.LinkSpeed;',
-      '    NlMtu = if ($ip) { [int]$ip.NlMtu } else { 0 };',
-      '    IPv4Address = @($ip | ForEach-Object { $_.IPAddress });',
-      '    IPv4DefaultGateway = @($cfg.IPv4DefaultGateway | ForEach-Object { $_.NextHop })',
-      '  }',
+      '    NlMtu = 0; IPv4Address = @(); IPv4DefaultGateway = @()',
+      '  };',
+      '  try {',
+      '    $ip = @(Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue);',
+      '    if ($ip.Count -gt 0) {',
+      '      $row.NlMtu = [int]$ip[0].NlMtu;',
+      '      $row.IPv4Address = @($ip | ForEach-Object { $_.IPAddress });',
+      '    }',
+      '  } catch { };',
+      '  try {',
+      '    $cfg = @(Get-NetIPConfiguration -InterfaceIndex $a.ifIndex -ErrorAction SilentlyContinue);',
+      '    if ($cfg.Count -gt 0) {',
+      '      $row.IPv4DefaultGateway = @($cfg[0].IPv4DefaultGateway | ForEach-Object { $_.NextHop });',
+      '    }',
+      '  } catch { };',
+      '  $row',
       '} | ConvertTo-Json -Compress'
     ].join('\n')
     const { stdout } = await execFileAsync(
