@@ -29,8 +29,12 @@ async function findTests(dir) {
   const found = []
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name)
-    if (entry.isDirectory()) found.push(...(await findTests(path)))
-    else if (entry.name.endsWith('.test.ts')) found.push(path)
+    if (entry.isDirectory()) {
+      // `test/windows` is the lab: it needs a built capture process and an elevated Windows machine,
+      // and it is run by `run-gateway-lab.mjs`. Running it here would only skip everything.
+      if (entry.name === 'windows') continue
+      found.push(...(await findTests(path)))
+    } else if (entry.name.endsWith('.test.ts')) found.push(path)
   }
   return found
 }

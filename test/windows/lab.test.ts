@@ -103,6 +103,12 @@ test('the runner is Windows, elevated, and has the driver and capture process wh
     t.skip('not Windows')
     return
   }
+  if (!WORKER_PATH) {
+    // Started by hand rather than by `scripts/run-gateway-lab.mjs`, which is what builds the capture
+    // process and passes its path in.
+    t.skip('run this through `npm run test:windows`')
+    return
+  }
   log(`dll: ${DLL_PATH} (${existsSync(DLL_PATH) ? 'present' : 'MISSING'})`)
   log(`capture process: ${WORKER_PATH} (${existsSync(WORKER_PATH) ? 'present' : 'MISSING'})`)
   const capability = await detectCapability(process.cwd())

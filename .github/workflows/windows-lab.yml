@@ -29,8 +29,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Server 2022 and 2019: two Windows kernels, two WFP/driver-signing configurations.
-        os: [windows-2022, windows-2019]
+        # Server 2022 and 2025: two Windows kernels, and two WFP/driver-signing configurations. The
+        # gateway runs on Windows 10 and 11, whose kernels are these two generations.
+        os: [windows-2022, windows-2025]
     steps:
       - uses: actions/checkout@v4
 
@@ -69,7 +70,7 @@ jobs:
         run: npm run test:gateway
 
       - name: Windows lab (driver, capture process, service)
-        run: node scripts/run-gateway-lab.mjs
+        run: npm run test:windows
 
       - name: The capture process is bundled for the app, not just for the lab
         run: |

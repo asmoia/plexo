@@ -27,7 +27,8 @@
     "build:extension": "node extension/build.mjs",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test --grep @smoke",
-    "test:gateway": "node scripts/run-unit-tests.mjs"
+    "test:gateway": "node scripts/run-unit-tests.mjs",
+    "test:windows": "node scripts/run-gateway-lab.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
