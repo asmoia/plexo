@@ -15,9 +15,12 @@
 import { build } from 'esbuild'
 import { mkdir, readdir, rm } from 'node:fs/promises'
 import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 
-const root = new URL('..', import.meta.url).pathname
+// fileURLToPath, not `.pathname`: on Windows the latter yields "/D:/a/...", and every
+// path built from it doubles up into "D:\\D:\\a\\...".
+const root = fileURLToPath(new URL('..', import.meta.url))
 const sourceDir = join(root, 'test')
 const outDir = join(root, '.tmp', 'unit-tests')
 const filter = process.argv[2] ?? ''

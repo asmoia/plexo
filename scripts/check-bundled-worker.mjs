@@ -13,8 +13,11 @@
 import { spawn } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const root = new URL('..', import.meta.url).pathname
+// fileURLToPath, not `.pathname`: on Windows the latter yields "/D:/a/...", and every
+// path built from it doubles up into "D:\\D:\\a\\...".
+const root = fileURLToPath(new URL('..', import.meta.url))
 const candidates = [
   join(root, 'out', 'main', 'winDivertWorker.js'),
   join(root, 'out', 'main', 'chunks', 'winDivertWorker.js')
