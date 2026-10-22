@@ -55,12 +55,13 @@ if (tests.length === 0) {
   process.exit(1)
 }
 
+const bundles = tests.map((name) => join(outDir, name.replace(/\.test\.ts$/, '.test.mjs')))
 await Promise.all(
-  tests.map((name) =>
+  tests.map((name, index) =>
     build({
       ...common,
       entryPoints: [join(sourceDir, name)],
-      outfile: join(outDir, name.replace(/\.test\.ts$/, '.test.mjs'))
+      outfile: bundles[index]
     })
   )
 )
@@ -90,7 +91,8 @@ console.log(`[lab] capture process built: ${relative(root, workerPath)}`)
 
 const child = spawn(
   process.execPath,
-  ['--test', '--test-reporter=spec', '--test-timeout=120000', outDir],
+  // Explicit files: on Windows `node --test <dir>` resolves the directory as a module and fails.
+  ['--test', '--test-reporter=spec', '--test-timeout=120000', ...bundles],
   {
     stdio: 'inherit',
     cwd: root,

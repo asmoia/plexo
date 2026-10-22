@@ -45,11 +45,13 @@ if (selected.length === 0) {
 await rm(outDir, { recursive: true, force: true })
 await mkdir(outDir, { recursive: true })
 
+const bundles = []
 await Promise.all(
   selected.map(async (path) => {
     const name = relative(sourceDir, path)
       .replace(/\.test\.ts$/, '.test.mjs')
       .replace(/[\\/]/g, '__')
+    bundles.push(join(outDir, name))
     await build({
       entryPoints: [path],
       outfile: join(outDir, name),
@@ -66,7 +68,10 @@ await Promise.all(
   })
 )
 
-const child = spawn(process.execPath, ['--test', '--test-reporter=spec', outDir], {
+// The files, not the directory: Node's test runner resolves a directory as a module on Windows and
+// fails with "Cannot find module". Explicit paths behave the same everywhere.
+console.log(`Running ${bundles.length} test files`)
+const child = spawn(process.execPath, ['--test', '--test-reporter=spec', ...bundles], {
   stdio: 'inherit',
   cwd: root
 })
